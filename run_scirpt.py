@@ -33,7 +33,7 @@ warnings.simplefilter("ignore", SparseEfficiencyWarning)
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 
-N_sys = 8
+N_sys = 4
 P = comm.Get_size()
 rank = comm.rank
 
@@ -72,15 +72,17 @@ if rank == P - 1:
 # solve in reverse mode
 
 
-output, times = parareal(systems, comm, P, 1e-4, 1e-9)
+err, times = parareal(systems, comm, P, 1e-6, 1e-9)
 
-err = output - output[-1]
+# err = output - output[-1]
 err_norm = np.linalg.norm(err, axis=1)
 rel_err_norm = err_norm/ err_norm[0]
 
 rel_err_norms = comm.gather(rel_err_norm, root=0)
 
 if comm.rank == 0:
+    print(err)
+    print(rel_err_norms)
     # --- plot the relative errs ---
     for rel_err_norm in rel_err_norms:
         plt.semilogy(times, rel_err_norm, '-o')

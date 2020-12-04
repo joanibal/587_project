@@ -90,17 +90,17 @@ def seq_iter(systems, comm, P, tol=1e-3, mode="coarse"):
 
 def parareal(systems, comm, P,  tol_cor, tol_fine):
     times = np.zeros(P+1)
-    output = np.zeros((P+1, systems[0].d_input.size))
+    err = np.zeros((P+1, systems[0].d_input.size))
 
     tot_start_time = time()
-    times[0] = time() - tot_start_time
-    output[0] = systems[0].d_input
 
     # --- coarse sequential solve to init---
     print(comm.rank, "------- seq update --------", time() - tot_start_time)
 
     seq_iter(systems, comm, P, tol_cor)
 
+    times[0] = time() - tot_start_time
+    err[0] = systems[0].get_err()
     # comm.barrier()
 
 
@@ -117,7 +117,7 @@ def parareal(systems, comm, P,  tol_cor, tol_fine):
 
         # comm.barrier()
         times[ii+1] = time() - tot_start_time
-        output[ii+1] = systems[0].d_input
+        err[ii+1] = systems[0].get_err()
 
 
-    return output, times
+    return err, times
