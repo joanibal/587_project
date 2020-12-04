@@ -1,0 +1,63 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+
+\title{EECS 587 Project Proposal: Parallel-in-time algorithms for system sensitivities}
+\author{Josh Anibal}
+\date{\today}
+
+\usepackage{natbib}
+\usepackage{graphicx}
+\usepackage{pdflscape}
+\usepackage{afterpage}
+\usepackage{lscape}
+\usepackage{amsmath, esint}
+\usepackage{geometry}
+\geometry{ margin=0.75in}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+
+\usepackage{floatrow}
+
+\usepackage[outdir=./]{epstopdf}
+\usepackage[parfill]{parskip}
+\usepackage{algorithm}
+\usepackage{algorithmicx}
+\usepackage{algpseudocode}
+% \usepackage{verbatim}
+\usepackage{mathtools}
+\DeclarePairedDelimiter\ceil{\lceil}{\rceil}
+\DeclarePairedDelimiter\floor{\lfloor}{\rfloor}
+
+% \epstopdfsetup{outdir=./}
+% Table float box with bottom caption, box width adjusted to content
+\newfloatcommand{capbtabbox}{table}[][\FBwidth]
+% \setlength\parindent{0pt}
+\graphicspath{{../figures/}}
+
+% \setlength{\parindent}{4em}
+% \setlength{\parskip}{1em}
+% \renewcommand{\baselinestretch}{2.0}
+\usepackage{float}
+
+\usepackage{booktabs}
+
+\begin{document}
+\label{Eqn:DE}
+\maketitle
+
+
+
+% Turn in a short report which includes the verification and a brief description of how
+% you decomposed the matrix, how you did communication, and your timing result. Analyze whether
+% the timing represents perfect speedup and scaling, and, if not, why is the program not achieving
+% it (or, if you have superlinear scaling, why that occurred). Note that you have scaling in terms of
+% the size of the matrix, as well as in the number of processors.
+
+\section*{Proposed Project}
+In design optimization the bottleneck is often computing the sensitivities because information must follow the path of the model in reverse in a serial fashion.
+This is similar to backward propagation for neural network except a linear system may need to be solved for each step making some steps more expensive and the process must be repeated for each objective and constraint.
+When propagating the information backward, the current step depends only on prior steps leading to a time-like decency structure between each backward propagation step.
+It is for this reason I propose using algorithms developed by the parallel-in-time community to parallelize this process to speedup the computation of sensitivities.
+
+\end{document}
+
