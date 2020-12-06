@@ -47,9 +47,9 @@ class SubSys():
         return x, exit_code
 
 
-    def get_err(self):
+    def get_err(self, arr):
         RHS = self.d_output + self.d_output_seed
 
-        return self.mat.dot(self.d_input) - RHS
+        return self.mat.dot(arr) - RHS
 
 

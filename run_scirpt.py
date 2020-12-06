@@ -33,14 +33,27 @@ warnings.simplefilter("ignore", SparseEfficiencyWarning)
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 
-N_sys = 4
+N_sys = 36
 P = comm.Get_size()
 rank = comm.rank
 
-# --- split the subsys ---
-n_sys = N_sys // P
-for ii in range(N_sys % P):
-    if rank == ii:
+# # --- split the subsys ---
+# n_sys = N_sys // P
+# for ii in range(N_sys % P):
+#     if rank == ii:
+#         n_sys += 1
+
+ranks = np.array(comm.allgather(rank))
+ranks += 1
+ranks = ranks[::-1]
+
+n_sys = int(N_sys*(ranks[rank])/np.sum(ranks, dtype=int))
+
+
+# remaining
+rem_sys = N_sys - np.sum(comm.allgather(n_sys), dtype=int)
+for ii in range(rem_sys):
+    if rank == P - ii:
         n_sys += 1
 
 
@@ -51,13 +64,13 @@ print(rank, n_sys)
 systems = []
 n_loc = 0
 for ii in range(n_sys):
-    ASmat = pickle.load(open("AS_mat_L2.p", "rb"))
-    ASmat.setdiag(-2e-0)
+    ASmat = pickle.load(open("AS_mat_L1.p", "rb"))
+    ASmat.setdiag(-2e0)
 
     systems.append(SubSys(ASmat))
 
     n_loc += ASmat.shape[0]
-    print(f"{rank}: adding {ASmat.shape}", n_loc)
+    # print(f"{rank}: adding {ASmat.shape}", n_loc)
 
 
 
@@ -72,26 +85,40 @@ if rank == P - 1:
 # solve in reverse mode
 
 
-err, times = parareal(systems, comm, P, 1e-6, 1e-9)
+output, times = parareal(systems, comm, P, 1e-5, 1e-9)
+
+if rank == 0:
+
+    print("============")
+    print(  np.linalg.norm(systems[0].d_input))
+    print("============")
 
 # err = output - output[-1]
+
+err = np.zeros(output.shape)
+for ii, arr in enumerate(output):
+    err[ii] = systems[0].get_err(arr)
+
 err_norm = np.linalg.norm(err, axis=1)
 rel_err_norm = err_norm/ err_norm[0]
 
 rel_err_norms = comm.gather(rel_err_norm, root=0)
+times_list = comm.gather(times, root=0)
 
 if comm.rank == 0:
-    print(err)
-    print(rel_err_norms)
+    print(times)
     # --- plot the relative errs ---
-    for rel_err_norm in rel_err_norms:
-        plt.semilogy(times, rel_err_norm, '-o')
+    for rel_err_norm, t  in zip(rel_err_norms, times_list):
+        plt.semilogy(t, rel_err_norm, '-o')
         # plt.title(str(8-comm.rank))
-
+    plt.xlabel('time [s]')
+    plt.ylabel('error')
     plt.show()
 
+
 # tot_start_time = time()
-# seq_iter(systems, comm, P,  tol=1e-9, mode='fine')
+# seq_iter(systems, comm, P, 0, tol=1e-9, mode='fine')
+
 # if rank == 0:
 
 #     print("============")
