@@ -16,12 +16,12 @@
 # (">" redirects the print output of your program,
 #  in this case to "mpi_demo_output.txt")
 evon py3
-mpirun -np 1 python run_script.py > run_1.out
-mpirun -np 2 python run_script.py > run_2.out
-mpirun -np 4 python run_script.py > run_4.out
-mpirun -np 8 python run_script.py > run_8.out
-mpirun -np 18 python run_script.py > run_18.out
-mpirun -np 36 python run_script.py > run_36.out
+mpirun -np 1 python run_scirpt.py > run_1.out
+mpirun -np 2 python run_scirpt.py > run_2.out
+mpirun -np 4 python run_scirpt.py > run_4.out
+mpirun -np 8 python run_scirpt.py > run_8.out
+mpirun -np 18 python run_scirpt.py > run_18.out
+mpirun -np 36 python run_scirpt.py > run_36.out
 
 
 
