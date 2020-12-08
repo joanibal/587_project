@@ -64,7 +64,7 @@ print(rank, n_sys)
 systems = []
 n_loc = 0
 for ii in range(n_sys):
-    ASmat = pickle.load(open("AS_mat_L1.p", "rb"))
+    ASmat = pickle.load(open("AS_mat_L2.p", "rb"))
     ASmat.setdiag(-2e0)
 
     systems.append(SubSys(ASmat))
@@ -107,13 +107,14 @@ times_list = comm.gather(times, root=0)
 
 if comm.rank == 0:
     print(times)
+    print(rel_err_norm)
     # --- plot the relative errs ---
-    for rel_err_norm, t  in zip(rel_err_norms, times_list):
-        plt.semilogy(t, rel_err_norm, '-o')
+    #for r, t  in zip(rel_err_norms, times_list):
+    #    plt.semilogy(t, r, '-o')
         # plt.title(str(8-comm.rank))
-    plt.xlabel('time [s]')
-    plt.ylabel('error')
-    plt.show()
+    #plt.xlabel('time [s]')
+    #plt.ylabel('error')
+    #plt.show()
 
 
 # tot_start_time = time()
