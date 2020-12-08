@@ -93,8 +93,11 @@
 
     Parallelizing tasks with a time-like dependency structure is non-trivial, but will become increasingly important to achieve good performance as computer architectures become increasingly concurrent.
     It is for this reason we propose using algorithms developed for parallel-in-time execution to parallelize the computation of sensitivities for engineering models.
-    In this work we will highlight any gains in performance from the execution of parallel-in-time sensitivity analysis for a low-fidelity heat-transfer constrained design problem. % or an aerostructural problem?
-    We will do this by implementing our engineering model and sensitivity analysis inside the open source optimization framework OpenMDAO \cite{Gray2019a}.
+	To study the effectiveness of these algorithms for such a purpose we first applied a modified version of the algorithm Parareal to a representative problem and analyzed its scaling behavior.
+	In these studies we found the algorithm used had poor scaling and a maximum speedup of only 1.5 times.
+	These poor scaling properties leads us to the conclusion that the parallel-in-time algorithm Parareal was not found to be an effective way to speed up the calculations of sensitivities in engineering models.
+	% In this work we will highlight any gains in performance from the execution of parallel-in-time sensitivity analysis for a low-fidelity heat-transfer constrained design problem. % or an aerostructural problem?
+    % We will do this by implementing our engineering model and sensitivity analysis inside the open source optimization framework OpenMDAO \cite{Gray2019a}.
 
 
 
@@ -110,17 +113,39 @@
 % engineering models are complicated
 Engineering models are composed of many sub-analyses.
 For example, in aerospace engineering a model to predict the fuelburn of an aircraft may be composed of analyses to compute geometry, aerodynamic performance, structural stresses, engine performance, and trajectory.
-Each of those analyses may be coupled with an other and many consist of many more sub-analyses.
+Each of those analyses may be coupled with an other analyses and many consist of many more sub-analyses.
 
-- optimization frameworks make it easy for users to construct large models
-- show openaeostruct n2 diagram to show scale of system
+Despite there complexity, optimization frameworks, such as OpenMDAO\cite{Gray2019a}, make it easy for engineers to construct models by defining components for each analysis and then connecting components to form models.
+
+The open source tool OpenAerostruct\cite{Jasa2018a} provides an example of such models.
+Figure \ref{fig:n2} shows the top level components of an OpenAerostruct model in an N2 diagram where the components are aligned on the diagonal and the off diagonal terms show the connections between models.
+
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.6\textwidth,keepaspectratio]{n2.png}
+	\caption{The N2 representation of this OpenAerostruct shows the components on the diagonal}
+	\label{fig:n2}
+\end{figure}
+
+The components of this model are composed of even more sub-components.
+Figure \ref{fig:n2_exp} attempts to show the N2 representation with all 62 of the sub-components exposed.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth,keepaspectratio]{n2_exp.png}
+	\caption{N2 representation of an OpenAerostruct model with all the sub-components exposed}
+	\label{fig:n2_exp}
+\end{figure}
 
 
 % optimization uses models
-To use a model, such as the fuelburn model, in large scale design optimization one needs to write sensitivity routines for each analysis.
-For an analysis that solves PDEs this may involve using the adjoint or the direct method.
-Then to calculate the gradients needed by the optimizer the sensitivity routines can be used in the forward or reverse mode.
-% either way the sensitivity routines have time dependency struture
+To use a engineering model, such as the OpenAerostruct model, in large scale design optimization one needs to write sensitivity routines for each component.
+For an component that solves PDEs this may involve using the adjoint or the direct method.
+Using the Unified Derivative Equation\cite{Martins2013a}, which is a generalization of the chain rule, the sensitivity routines of each component can be combined to get derivatives of objective functions and constraints with respect to the design variables.
+Derivatives can be calculated in this way in both the forward or reverse mode.
+
+% either way the sensitivity routines have time dependency structure
 In the forward mode the each sensitivity routine is only influenced by those that came before in the model execution order and in the reverse mode each routine is only affected by those that come after.
 In either sensitivity mode, the dependency of the routines is one way.
 
@@ -128,51 +153,48 @@ In either sensitivity mode, the dependency of the routines is one way.
 This one-way dependency structure is very similar to that of a time-accurate simulation where each time step is only influenced by those that came before it.
 Because this type of simulation is so common, research effort has already been applied to parallelize these simulations in time despite the difficulty inherent to the dependency structure.
 
-from wiki
-"While historically most efforts to parallelize the numerical solution of partial differential equations focussed on the spatial discretization, in view of the challenges from exascale computing, parallel methods for temporal discretization have been identified as a possible way to increase concurrency in numerical software.[2]"
-
 % work has been done on this problem
 Gander\cite{Gander2015} provides a review of this work and showcases key contributions.
 The author of the review highlights the recent increased interest in parallel-in-time algorithms now that processor clock speeds have plateaued.
 The current trend in computing is toward using increased parallelism to provide increased performance.
-This trend is unlikely to reverse anytime soon especially as GPUs find there way into mainstream computing.
+This trend is unlikely to reverse anytime soon especially as GPUs find there way into mainstream computing and we move into the exascale era.
 
-% poeople are applying this work else where
+% people are applying this work else where
 Because of the rising importance of parallelism, recent work has been done to apply the research on algorithms for parallel time accurate simulations to problems with the same structure.
 Gunther et al.\cite{Gunther2019} have shown that the parallel-in-time algorithm MGIRT\cite{Falgout2014} was effective at reducing the computational time required to solve for sensitivities of an unsteady adjoint problem.
-Furthermore, Gunther et al.\cite{Gunther2020} have applied the same technique to speedup backpropogation for neural networks and shown its effectiveness.
+Furthermore, Gunther et al.\cite{Gunther2020} have applied the same technique to speedup back-propogation for neural networks and shown its effectiveness.
 
 
 % this hasn't be applied to general engineering models yet
-At present no work has been done to parallelize the execution of sequential sensitivity routines within the sensitivity computation for engineering models.
-The aim of this work is to address this absence by applying parallel-in-time algorithms to this task and highlighting the performance enhancements.
+At present no work has been done to parallelize the execution of sequential sensitivity routines within the sensitivity computations for engineering models.
+The aim of this work is to address this absence by applying parallel-in-time (PinT) algorithms to this task and highlighting the performance enhancements.
 
 
 \section{Problem}
 To explore the idea of using PinT algorithms to speed up sensitivity calculations we first need a problem to test our algorithm on.
-
 Since this study is exploratory a suitable problem should be rather basic.
 However, it must also be scalable so that we may fully test the algorithm.
 
-To stratify these requirements our model will consist of N identical components connected in series.
-In this model each component only passes values to the component ahead of it and only recieves values from the component behined it.
-Similarly when calculating sensitivities in the reverse mode, the derivative seeds are propogated backwards from the last component to the first.
+To stratify these requirements our model will consist of N identical components connected in series and is shown schematically in Figure \ref{fig:model}.
+In this model each component only passes values to the component ahead of it and only receives values from the component behind it.
+Similarly when calculating sensitivities in the reverse mode, the derivative seeds are propagated backwards from the last component to the first.
 
--- figure of components passing values forward and derivatives back --
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.90\textwidth,keepaspectratio]{model.png}
+	\caption{A schematic view of the problem used in this study}
+	\label{fig:model}
+\end{figure}
 
 
 Although, this problem represents a vary simple dependency structure between components it incorporates the key difficult in computing sensitivities; passing information all the way from one side of the model to the other.
-
-
 Within each component a linear system will have to be solved to calculated the derivative seeds of the inputs.
-This represents a cause where the components cacluate their outputs by solving and implicit equation, which is often the case for models based on PDEs.
+This represents a case where the components calculate their outputs by solving an implicit equation, which is the case for models based on PDEs.
 
-It is important that the system that is being solved by each componentne has the same same structure as a real problem.
-This is becuase it has been shown that PinT algorithms can have a different effectiveness for matrices which represent different physical problems.
-
+It is important that the system that is being solved by each component has the same same structure as a real problem.
+This is because it has been shown that PinT algorithms can have a different effectiveness for matrices which represent different physical problems.
 As a result the matrix was carefully chosen.
-
-The matrix was take from a component constructed to solve a steady aeroelastic analysis\cite{Jasa2018a}.
+The matrix was take from a component constructed to solve a steady aeroelastic analysis in OpenAerostruct.
 The component uses a vortex lattice method to calculate loads at points along the wing and a beam model to calculate the subsequent deflections
 By chaining this component together it represents a model similar to a quasi steady aeroelastic analysis.
 The matrix represent the jacobian of the state variables of the system with respect to the residuals.
@@ -185,34 +207,35 @@ Using this method 417x417, 2387x237, 21830x21830, 90711x90711, 342711x342711 mat
 \section{Algorithm}
 
 The algorithm used to parallelize the sensitivity calculation is based on the parareal algorithm.
-Parareal is one of teh most popular PinT algorithms and has a wide body of literacy describing its implementation and performance properties.
-
+Parareal is one of the most popular PinT algorithms and has a wide body of literacy describing its implementation and performance properties.
 % describe what the parareal algorithm is
 
 % decompose the time
-The time domain must be decomposed into as many sum domains as the number of processors.
-For our sensitivity propogation problem, the domain is the collection of all the models components.
-Thus the sub domain are fromed by creating subsets of the the model components
+To use Parareal, the time domain must be decomposed into as many sum domains as the number of processors, $P$.
+For our sensitivity propagation problem, the domain is the collection of all the models components.
+Thus the sub domain are formed by creating subsets of the the model components as shown in Figure \ref{subdomains}
 
 
---- sub compontents shown graphically ---
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.90\textwidth,keepaspectratio]{subdomains.png}
+	\caption{The sub domains needed for the Parareal algorithm are formed by taking sub sets of the model components}
+	\label{fig:subdomains}
+\end{figure}
 
 
-Each processor will work towards solve the problem on its sub domain.
-This is done by preforming iterations using a "coarse" and a "fine" methods for solving the problems on the sub domains.
-As the names suggest the coarse method should supply an approximate solution to the problem at low cost, while the fine method should supply an arcuate answer to the problem at a much higher cost.
+Each processor will work towards solving the problem on its sub domain.
+This is done by preforming iterations using a \emph{coarse} and a \emph{fine} methods for solving the problems on the sub domains.
+As the names suggest, the coarse method should supply an approximate solution to the problem at low cost, while the fine method should supply an arcuate answer to the problem at a much higher cost.
 
-For our sensitivity propogation problem. the fine method will be an accurate solve of the linear system of each component while the coarse method is and inexact solve of the same system.
+For our sensitivity propagation problem, the fine method will be an accurate solve of the linear system of each component while the coarse method is an inexact solve of the same system.
 For both methods the iterative solver GMRES will be used but with different tolerances.
-The fine solver has a tolerance of 1e9, which is the smallest tolerance that could be reliably solved, while the coarse method has a tolerance of 1e-5.
+The fine solver has a tolerance of 1e-9, which is the smallest tolerance that could be reliably solved, while the coarse method has a tolerance of 1e-5.
 
 
 
 
-
-
-
-The algorithm is initalized by computing a coarse solution to the problem by using sequentially using the coarse solution method on each sub domain.
+The algorithm is initialized by computing a coarse solution to the problem by using sequentially using the coarse solution method on each sub domain.
 
 \begin{equation}
     y_{j+1}=\mathcal{G}\left(y_{j}, t_{j}, t_{j+1}\right), \quad j=0, \ldots, P-1
@@ -233,89 +256,156 @@ A sequential correction is then made based on the fine solution and the differen
 \end{equation}
 
 Parallel fine solutions and sequential corrections are performed iteratively until the the solution across the entire time domain converges.
-
-"
-Because Parareal computes the numerical solution for multiple time steps in parallel, it is categorized as a parallel across the steps method.[3] This is in contrast to approaches using parallelism across the method like parallel Runge-Kutta or extrapolation methods, where independent stages can be computed in parallel or parallel across the system methods like waveform relaxation.[4][5]
-"
-
-
+Because The parallel algorithm  executes all fine solutions in parallel, it is a PintT algorithm that is categorized as a parallel across the steps method.
 It can be shown that the parareal algorithm will converge to the exact solution in the general case in P iterations or less.
 However, if the algorithm converges in P iterations no speed up will be achieved.
 Thus to achieve meaningful speedups with the basic algorithm it must converge in far fewer than P iterations.
 
 
 
-To further improve on the basic algorithm, the prior solution can be used as an initial guess for the fine method and the prior coarse solution can be used as an initial guess for the coarse method.
-It is import not to use the current solution as the intial guess for the coarse method as this was found to cause the algorithm to converge to the incorrect answer.
-This technique requires additional memory to save the prior solution, but reduces the cost next iteration.
+To further improve on the basic algorithm, the prior corrected solution can be used as an initial guess for the fine method and the prior coarse solution can be used as an initial guess for the coarse method.
+It is import not to use the current corrected solution as the initial guess for the coarse method as this will cause the algorithm to converge to the incorrect answer.
+This technique requires additional memory to save the prior solution, but reduces the cost of the next iteration.
 
-Another modification made to the ordinal parareal algorithm was to skip fine solutions and corrections on sub domains which have already converged to the exact solution.
-Because the sub domain j, 0< j < P  will converge to the exact solution after J iterations there is no need to update it in future iterations.
-
-
-This two optimizations reduce the cost of later iterations and lead to a faster algorithm overall.
+Another modification made to the original Parareal algorithm was to skip fine solutions and corrections on sub domains which have already converged to the exact solution.
+Because sub domain $j $ where $j$ is $0 < j < P$ will converge to the exact solution after $j$ iterations there is no need to update it in future iterations.
+By skipping the update of those sub domains in the sequential correction and parallel fine solve step, we reduce the cost of each as the algorithm progresses.
+These two optimizations lead to a faster algorithm overall than the original Parareal algorithm.
 
 
 
 \subsubsection{Parallelsim}
 This algorithm can be parallelized using either shared memory or distributed memory.
-
 For this project MPI was used to incorporate distributed memory parallelism.
 Distributed memory parallelism was chosen because the solution methods used on each sub domain may require solving large systems that require lots of memory.
 As a result the algorithm may need to be run on multiple nodes.
-MPI and distributed memory parallleism provides a flexible solution for supporting inter and intra node parallelization.
+MPI and distributed memory parallelism provides a flexible solution for supporting inter and intra node parallelization.
 
-
-messages are pasted backwards during each sequential solve.
+At each iteration of the algorithm messages are pasted backwards between subdomains during each sequential solve.
 blocking communication is used to prevent the processor from moving forward until it has the information it needs to do so.
+No barriers are used to allow greater overlap in computation.
+Figure \ref{fig:overlap} shows the ideal case of parallel execution. it was found that load balancing was necessary to achieve this.
 
-no barriers are used to allow greater overlap in computation.
-Figure ?? shows the ideal case of parallel execution. it was found that load balancing was necessary to achieve this.
 
-
---- execution threads in parallel ---
-
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.80\textwidth,keepaspectratio]{overlap.png}
+	\caption{The algorithm used always for the subdomains to overlap calculations}
+	\label{fig:overlap}
+\end{figure}
 
 
 
 \subsubsection{Load balancing}
 It was found that equally distributing the components of the model across processors was not ideal.
 For our particular problem it was discovered that components that that were closer to the end took more time to solve both fine and coarse problems.
-
-This was a major issue because during the sequential upate all processor downstream need to wait until the prior has completed it's sequential update.
-
-To ensure the processor were not holding up later processors, the earlier processors were given less work.
+This was a major issue because during the sequential update all processor downstream need to wait until the prior processor has completed it's sequential update.
+To ensure the processors were not holding up later processors, the earlier processors were given less work.
 
 
-
-Although, it is had to solve this issue in general.
-One could use the condition number or eigenvalues of the matrix to estimate how difficult it will be to solve the system.
+However, this load balancing technique required prior knowledge about how long each linear system would take to solve.
+Estimation of the time needed to solve the linear system on each component before trying is is hard to solve in general.
+One could use the condition number or eigenvalues of the matrix to estimate how difficult it will be to solve a system of that size.
 However, these are expensive to compute and in this example even though all of the components use the same matrix the time to solve still differed by a factor of up to 8.
 
 \section{Results}
-algorithm was run on greatlakes
+
+To test the scalability of the algorithm both strong and weak scaling tests were performed.
+The strong scaling study was performed on a single node of the GreatLakes computing cluster using two 3.0 GHz Intel Xeon Gold 6154 processors.
+The weak scaling study was performed on a desktop computer using a 4.00GHz Intel i7-4790K processor.
+
+
 
 \subsection{strong scaling}
-peaks at 1.5x speed up at two procs
+The strong scaling tests revealed that the algorithm had a maximum speedup up 1.5x when run in parallel.
+Figure \ref{fig:speedup} shows the speed up achieved as the number of processors increases.
+The peak speedup of 1.5x occurs at 4 processors, and decreases to a speedup of less than 1 with 32 processors.
 
-performance is poor
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.60\textwidth,keepaspectratio]{strong_scaling.pdf}
+	\caption{}
+	\label{fig:speedup}
+\end{figure}
+
+This performance result is disapointing and thought about why this is the case are discussed in the Discussion section.
+
+
 
 \subsection{weak scaling}
 
-also bad
+Similarly, the weak scaling of the algorithm is poor as shown by Figure \ref{fig:weak_scaling}.
+As the number of processors are increased the size of the problem is increased as well at the same rate.
+To increase the problem size the number of components in the model is doubled when the number of processors is also doubled.
+This was done for the three largest matrix sizes to study how it might affect the scalability.
+
+
+% \begin{figure}[H]
+% 	\centering
+% 	\includegraphics[width=0.60\textwidth,keepaspectratio]{weak_scaling.pdf}
+% 	\caption{}
+% 	\label{fig:speedup}
+% \end{figure}
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.60\textwidth,keepaspectratio]{weak_scaling.pdf}
+	\caption{}
+	\label{fig:weak_scaling}
+\end{figure}
+
+Help by the fact that the added component tended to be easier to solve as mentioned in the load balancing section.
+
+
 
 \section{Discussion}
 
-Parallelization in time is inherently difficult.
+\subsection{Usefulness}
 
-parareal algorithm speed up is bounded by
+The maximum speed up in the calculation of sensitivities from using a parallel in time algorithm was not large enough to be great partial use.
+It is often the case that there is a better way to speed up the sensitivity analysis of each component by using parallelism.
+For cases where the sensitivities calculations require solving a linear system like in our example problem, then one would be better off using parallel iterative solver.
+Such solvers are we established and are included in libraries such as PETSC where they have been shown to have good scalability up to many thousands of corse.
+
+The value of the algorithm would be to add auxialiary option for parallelization when the individual component themselves cannot be parallelized or already been parallelized to the maximum extend possible.
+
+One case where the components themselves may be hard to parallelize is were they represent simple functions like in a neural net work.
+Another case where this algorithm may be useful is if one was using a truly massive model where different componets resided on different comput nodes in order to have sufficent memory.
+In this case, with the proposed algorithm all nodes could at least do some useful work instead of having some sit idle.
+
+\subsection{Explanation}
+
+
+
+Parallelization in time is inherently difficult.
+Unlike parallelization in space where nodes depend on only spacial neighbors, In time parallelization nodes depend on all previous nodes.
+As a result you cannot simply split the domain and correct cells near the interface; corrections must be propagated through all nodes ahead in time.
+
+
+Regardless of this difficulty algorithm such as parareal attempt to parallelize problems in time anyway.
+However, the success of these algorithms is limited.
+For an algorithm like parareal, a 60x speedup with 500 cores is considered a good result.
+This is because the parareal algorithm speed up is bounded by the inequality given in equation \ref{eqn:speedup}.
 
 
 \begin{equation}
     S_{p}=\frac{c_{\text {fine }}}{c_{\text {parareal }}}=\frac{1}{(K+1) \frac{N_{c}}{N_{f}} \frac{\tau_{c}}{\tau_{f}}+\frac{K}{P}} \leq \min \left\{\frac{N_{f} \tau_{f}}{N_{c} \tau_{c}}, \frac{P}{K}\right\}
+    \label{eqn:speedup}
 \end{equation}
 
-with plan parareal we need a K << P and a coarse method which is much faster than the fine method to achieve a speedup
+To maximize our achievable speedup we need a K << P and a coarse method which is much faster than the fine method.
+It may not be obvious at first, but these two objectives are in competition with one another.
+To achieve a small number it iteration K, more accurate updated must be used at each iteration.
+This requires a coarse method that is more accurate and thus more costly.
+So, with all else being held equal to decrease the term $\frac{P}{K}$ one must increase the term $ \frac{N_{f} \tau_{f}}{N_{c} \tau_{c}} $.
+Thus the maximum speedup of the parareal algorithm is limited by a compromise between both terms.
+
+
+
+although our algorith is differernt than the basic parareal algorithm, the modifications are only minor and therefore it is still useful to consider speedup properties of the parareal algorithm.
+
+For our problem the cost of the coarse and fine methods are determined by the tolerances use for the linear solver.
+In general, the error of iterative linear solvers converge linearly with the number of iterations.
+gmres converges linearly.
 
 \begin{figure}[H]
 	\centering
@@ -323,7 +413,14 @@ with plan parareal we need a K << P and a coarse method which is much faster tha
 	\caption{Convergence rate of GMRES for a well behaved matrix from "Numerical Linear Algebra" by Trefethen and Bau}
 	\label{fig:gmres_conv}
 \end{figure}
-gmres converges linearly. This limits the ratio of the costs of the fine and coarse method
+
+Since the cost per iteration is constant then the cost also scales linearly.
+
+
+
+
+we can confirm this by analying the solution time need to solve the matrices used to certain tolerance.
+Figure \ref{fig:acc_timing} indeed shows that as the solver tolerance increases the cost to solve each matrix increases approximately linearly
 
 \begin{figure}[H]
 	\centering
@@ -332,33 +429,62 @@ gmres converges linearly. This limits the ratio of the costs of the fine and coa
 	\label{fig:acc_timing}
 \end{figure}
 
-
-
-- more or less linear. For twice as many orders of accuracy the cost of the solution only doubles.
-
 Pretty remarkable, but it means that a pure parareal algorithm the max speedup is at most 2x for the levels of fine and coarse solvers used.
-
-the second term $\frac{P}{K}$
--parallel garunetted to converge after P iterations, but then there is no speedup
-- arrcurcy of parareal converges like so with K
-- high tolerance for coarse solver needed for K to converge sooner than P
-- balance with first term
-
-- for our problems it was found that we were unable to converge K in less than P iterations
+- For twice as many orders of accuracy the cost of the solution only doubles.
+solver tolerance off 1e-5 and 1e-9 were found to produce the greatest speed up
+for a basic parareal algorith this would limit the speed up to 1.8x
 
 
-- by reusing information we can make the cost of additional iterations cheaper, but with only small tweaks we can't do much better than the original parareal algorithm which has no speed up for this problem.
 
-- more effective to just speed up each fine solver.
-- using a toolbox like petsc has better scalability up to many many core.
-- only really has value has a second layer of parallelism
-- one would have to have a massive problem for it to be worth using this algorithm
 
-- or many simple problems which don't parallelize well (like a NN)
+maybe the method of submatrices and use a GPU
+
+
+
+
+In addition to the low ratio of fine cost to coarse cost, it was found that the solution would not converge in less than P iterations for our problem.
+Figure \ref{fig:res_hist} shows the error in the solution after each iteration at different points in time.
+Although the figure is shown for the particular case with 8 processor and the 90711x 90711 matrix it is representative of the other cases aswell.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.60\textwidth,keepaspectratio]{res_hist.pdf}
+    \caption{}
+    \label{fig:res_hist}
+\end{figure}
+
+
+- It could be we simply didn't have the right types of matrices for the parareal algorithm to be effective
+
+
+It is not fully understood why this happened, although the equation for the converge of error by parareal, Equation \ref{eqn:conv}, gives us a clue. The variables that are important in that equation are $k$, the number of iterations, and $N$, the number of sub-interval.
+
+\begin{equation}
+	\max _{1 \leq n \leq N}\left|u\left(t_{n}\right)-U_{n}^{k}\right| \leq \frac{\left(C_{1} T\right)^{k}}{k !} e^{C_{2}(T-(k+1) \Delta T)} \Delta T^{\rho k} \max _{1 \leq n \leq N}\left|u\left(t_{n}\right)-U_{n}^{0}\right|
+	\label{eqn:conv}
+\end{equation}
+
+There are many factors in the right hand side of Equation \ref{eqn:conv}, but the one that is most important is $\frac{\left(C_{1} T\right)^{k}}{k !}$.
+Eventually, $k!$ will grow faster than $\left(C_{1} T\right)^{k}$, but his may not happen until k is very large.
+Thus to achieve converge before P iteration, P must be sufficiently large to allow enough iteration for the $1/k!$ factor to dominant.
+However, for our problem even 32 sub-intervals was not enough for the $1/k!$ factor to converge the error before P iterations.
+Therefore to achieve any speedup at all we had to modify the basic parareal algorithm.
+By reusing information we can make the cost of additional iterations cheaper, but with only small tweaks we can't do much better than the original parareal algorithm which has no speed up for this problem.
 
 \section{conclusion}
 
-don't do this
+
+The calculation of engineering sensitivities are a bottle neck in design optimization.
+In an attempt to speedup this process we investigated the use of a modified version of the parallel-in-time algorithm Parareal to parallelize the problem.
+We applied this algorithm to example models created by repeating a matrix from a real engineering problem.
+The algorithm uses MPI to pass data about intermediate solution states to components on other processors.
+By applying some load balancing to the problem the algorithm achieves better performance by reducing the time the processors are waiting to receive data.
+The studies of the strong and weak scaling reveals that the algorithm does not scale well.
+The algorithm works best with 4 or less processors and was only able to achieve a maximum speed up of 1.5x.
+In conclusion, the use of the parallel-in-time algorithm parareal was not found to be an effective way to speed up the calculations of sensitivities in engineering models.
+Analysis of the basic parareal algorithm provides some insight into the theoretical limitations that may have contributed to the poor performance of the modified version of parareal we used.
+
+
 
 
 \bibliography{mybib,mdolab}
